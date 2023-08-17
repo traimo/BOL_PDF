@@ -1,54 +1,65 @@
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Frame
+from reportlab.lib.pagesizes import A4, LETTER, letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
 from reportlab.lib import colors
+from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate, NextPageTemplate, Paragraph, PageBreak, Table, \
+    TableStyle
 
-def create_pdf(output_filename):
-    doc = SimpleDocTemplate(output_filename, pagesize=letter)
 
-    # Create a list to hold flowables (content elements)
-    story = []
+class ShippingListReport(BaseDocTemplate):
+    def __init__(self, filename, their_adress, objects, **kwargs):
+        super().__init__(filename, page_size=LETTER, _pageBreakQuick=0, **kwargs)
+        self.their_adress = their_adress
+        self.objects = objects
 
-    # Create a table data
-    data = [
-        ["Name", "Age", "Occupation"],
-        ["John Doe", "30", "Engineer"],
-        ["Jane Smith", "25", "Designer"],
-        ["Michael Johnson", "40", "Manager"],
-    ]
+        self.page_width = (self.width + self.leftMargin * 2)
+        self.page_height = (self.height + self.bottomMargin * 2)
 
-    # Create a table style
-    table_style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-    ])
 
-    # Create a table and apply the style
-    table = Table(data)
-    table.setStyle(table_style)
+        styles = getSampleStyleSheet()
 
-    # Create a frame to hold the table
-    frame = Frame(
-        doc.leftMargin,
-        doc.bottomMargin,
-        doc.width,
-        doc.height,
-        showBoundary=1  # Display frame boundary for demonstration purposes
-    )
+        # Setting up the frames, frames are use for dynamic content not fixed page elements
+        first_page_table_frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height - 6 * cm, id='small_table')
+        later_pages_table_frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height, id='large_table')
 
-    # Add the table to the frame
-    frame.addFromList([table], doc)
+        # Creating the page templates
+        first_page = PageTemplate(id='FirstPage', frames=[first_page_table_frame], onPage=self.on_first_page)
+        later_pages = PageTemplate(id='LaterPages', frames=[later_pages_table_frame], onPage=self.add_default_info)
+        self.addPageTemplates([first_page, later_pages])
 
-    # Add the frame to the story
-    story.append(frame)
+        # Tell Reportlab to use the other template on the later pages,
+        # by the default the first template that was added is used for the first page.
+        story = [NextPageTemplate(['*', 'LaterPages'])]
 
-    # Build the PDF
-    doc.build(story)
+        table_grid = [["Product", "Quantity"]]
+        # Add the objects
+        for shipped_object in self.objects:
+            table_grid.append([shipped_object, "42"])
 
-if __name__ == "__main__":
-    output_filename = "c:\\temp\\vics_bill_of_lading.pdf"
-    create_pdf(output_filename)
-    print(f"PDF created: {output_filename}")
+        story.append(Table(table_grid, repeatRows=1, colWidths=[0.5 * self.width, 0.5 * self.width],
+                           style=TableStyle([('GRID',(0,1),(-1,-1),0.25,colors.gray),
+                                             ('BOX', (0,0), (-1,-1), 1.0, colors.black),
+                                             ('BOX', (0,0), (1,0), 1.0, colors.black),
+                                             ])))
+
+        self.build(story)
+
+    def on_first_page(self, canvas, doc):
+        canvas.saveState()
+        # Add the logo and other default stuff
+        self.add_default_info(canvas, doc)
+
+        canvas.drawString(doc.leftMargin, doc.height, "My address")
+        canvas.drawString(0.5 * doc.page_width, doc.height, self.their_adress)
+
+        canvas.restoreState()
+
+    def add_default_info(self, canvas, doc):
+        canvas.saveState()
+        canvas.drawCentredString(0.5 * (doc.page_width), doc.page_height - 2.5 * cm, "Company Name")
+
+        canvas.restoreState()
+
+
+if __name__ == '__main__':
+    ShippingListReport('example.pdf', "Their address", ["Product", "Product"] * 50)
